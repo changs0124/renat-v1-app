@@ -1,0 +1,1 @@
+export const checkUserStatus = (s) => (s === "OFFLINE" ? "offline" : "online");

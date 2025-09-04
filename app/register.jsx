@@ -16,8 +16,8 @@ function register() {
     const [visible, setVisible] = useState(false);
 
     const models = useQuery({
-        queryKey: ['models'],
-        queryFn: async () => instance.get('/models').then(res => res.data),
+        queryKey: ["models"],
+        queryFn: async () => instance.get("/models").then(res => res.data),
         enabled: true,
         retry: 0,
         refetchOnWindowFocus: false,
@@ -27,19 +27,19 @@ function register() {
         if (models?.data?.length > 0 && modelId === 0) {
             setModelId(models?.data[0].id);
         }
-    }, [models?.isSuccess]);
+    }, [models.isSuccess]);
 
     const register = useMutation({
         mutationFn: async ({ userName }) => {
             const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') throw new Error('위치 권한이 거부되었습니다.');
+            if (status !== "granted") throw new Error("Location permission denied.");
 
             const location = await Location.getCurrentPositionAsync({});
             const { latitude, longitude } = location.coords;
 
             const userCode = uuid.v4().toString();
 
-            await instance.post('/user', {
+            await instance.post("/user", {
                 userCode,
                 userName,
                 modelId,
@@ -51,8 +51,7 @@ function register() {
         },
         onSuccess: async (userCode) => {
             await AsyncStorage.setItem("userCode", userCode);
-
-            Alert.alert("장치 등록 완료")
+            Alert.alert("Register Success")
             router.replace("/")
         },
         onError: (err) => {
@@ -65,10 +64,10 @@ function register() {
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                 <View style={registerStyles.layout}>
                     <Card style={registerStyles.card}>
-                        <Card.Title title="장치 등록" subtitle="이름과 장치를 선택하세요" />
+                        <Card.Title title="Register User" subtitle="Select a name and device" />
                         <Card.Content>
                             <TextInput
-                                label="이름"
+                                label="UserName"
                                 value={userName}
                                 onChangeText={setUserName}
                                 mode="outlined"
@@ -83,11 +82,11 @@ function register() {
                                         onPress={() => setVisible(true)}
                                         style={registerStyles.input}
                                     >
-                                        {models?.data?.find(m => m.id === modelId)?.modelNumber || "장치 선택"}
+                                        {models?.data?.find(m => m.id === modelId)?.modelNumber || "Select the model"}
                                     </Button>
                                 }
                             >
-                                {models?.isError && <Menu.Item onPress={() => models.refetch()} title="불러오기 실패 (다시 시도)" />}
+                                {models?.isError && <Menu.Item onPress={() => models.refetch()} title="Load failed (try again)" />}
                                 {models?.isLoading && <ActivityIndicator style={{ margin: 8 }} />}
                                 {models?.data?.map(m => (
                                     <Menu.Item
@@ -107,7 +106,7 @@ function register() {
                                 disabled={!userName || !modelId}
                                 onPress={() => register.mutateAsync({ userName: userName.trim() }).catch(() => { })}
                             >
-                                가입하기
+                                Register
                             </Button>
                         </Card.Actions>
                     </Card>

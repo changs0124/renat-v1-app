@@ -29,28 +29,28 @@ function history() {
     return (
         <>
             <Appbar.Header>
-                <Appbar.Content title="히스토리 / 경로" />
+                <Appbar.Content title="History / Paths" />
             </Appbar.Header>
 
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
                 <Card>
                     <Card.Content style={{ gap: 12 }}>
                         <TextInput
-                            label="목적지"
+                            label="Cargo"
                             placeholder="예) A동 3층"
                             value={dest}
                             onChangeText={setDest}
                             left={<TextInput.Icon icon="map-marker" />}
                         />
                         <TextInput
-                            label="물품"
+                            label="Product"
                             placeholder="예) 팔레트 2EA"
                             value={item}
                             onChangeText={setItem}
                             left={<TextInput.Icon icon="package-variant-closed" />}
                         />
                         <Button mode="contained" onPress={onSearch} loading={loading}>
-                            경로 보기
+                            View paths
                         </Button>
                     </Card.Content>
                 </Card>
@@ -64,7 +64,7 @@ function history() {
                 </View>
 
                 <Card>
-                    <Card.Title title="경로 결과" subtitle="샘플 데이터" />
+                    <Card.Title title="Search results" />
                     <Divider />
                     {SAMPLE_ROUTES.map((r, idx) => (
                         <View key={r.id}>

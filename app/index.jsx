@@ -1,23 +1,25 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery } from "@tanstack/react-query";
-import { Redirect, Link, router, useFocusEffect } from "expo-router";
+import { Redirect, Link, router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { View, Text } from "react-native";
 import { instance } from "../apis/instance";
 import { Button } from "react-native-paper";
+import { useAtom } from "jotai";
+import { userCodeAtom } from "atom/userAtom";
 
 function index() {
-    const [userCode, setUserCode] = useState(null);
-    const [checked, setChecked] = useState(false);
+    const [userCode, setUserCode ] = useAtom(userCodeAtom);
+
+    const [isChecked, setIsChecked] = useState(false);
 
     useEffect(() => {
         console.log("[Index] Mounted");
-
         (async () => {
             const code = await AsyncStorage.getItem("userCode");
             console.log("[Index] UserCode from Storage =", code);
             setUserCode(code);
-            setChecked(true);
+            setIsChecked(true);
         })();
     }, []);
 
@@ -27,16 +29,13 @@ function index() {
             const res = await instance.get(`/user/${userCode}`);
             return res.data;
         },
-        enabled: !!userCode,
+        enabled: isChecked && !!userCode,
         retry: 0,
-        refetchOnWindowFocus: false,
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true
     });
 
-    useFocusEffect(React.useCallback(() => {
-        auth.refetch(); // 탭으로 돌아올 때마다 재검증
-    }, [auth]))
-
-    if (!checked) {
+    if (!isChecked) {
         console.log("[Index] Waiting Storage");
         return (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

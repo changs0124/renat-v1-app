@@ -28,10 +28,10 @@ function _layout() {
                     },
                 })}
             >
-                <Tabs.Screen name="index" options={{ title: "홈" }} />
-                <Tabs.Screen name="history" options={{ title: "히스토리" }} />
-                <Tabs.Screen name="job" options={{ title: "작업" }} />
-                <Tabs.Screen name="info" options={{ title: "정보" }} />
+                <Tabs.Screen name="index" options={{ title: "Home" }} />
+                <Tabs.Screen name="history" options={{ title: "History" }} />
+                <Tabs.Screen name="job" options={{ title: "Job" }} />
+                <Tabs.Screen name="info" options={{ title: "Info" }} />
             </Tabs>
         </PresenceProvider>
     );

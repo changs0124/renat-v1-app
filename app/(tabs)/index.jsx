@@ -1,75 +1,110 @@
-// app/(tabs)/index.jsx
+import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { presenceAtom } from "atom/locationAtom";
-import { socketStatusAtom } from "atom/presenceAtom";
+import { useMutation } from "@tanstack/react-query";
+import { instance } from "apis/instance";
+import { presenceAtom, socketStatusAtom } from "atom/presenceAtom";
+import { userCodeAtom } from "atom/userAtom";
 import { useAtomValue } from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, ScrollView } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import {
-    Appbar,
-    Searchbar,
-    SegmentedButtons,
-    Card,
-    Text,
-    List,
-    Avatar,
-    Divider,
-    Badge,
-    Banner,
-    IconButton,
-} from "react-native-paper";
+import { Appbar, Searchbar, SegmentedButtons, Card, Text, List, Avatar, Divider, Badge, Banner, IconButton, ActivityIndicator } from "react-native-paper";
+import { haversine } from "utils/geoUtils";
+import { checkUserStatus } from "utils/statusUtils";
 
-// ── 거리 계산 (km) ──
-const haversine = (lat1, lng1, lat2, lng2) => {
-    const R = 6371;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-};
-
-const simpleStatus = (s) => (s === "OFFLINE" ? "offline" : "online");
+// [FIX] 시청 좌표(기본값)
+const SEOUL_CITY_HALL = { lat: 37.5665, lng: 126.9780 };
 
 function index() {
-    const presence = useAtomValue(presenceAtom);
+    const presence = useAtomValue(presenceAtom) || {}; // [FIX] undefined 안전
     const socketStatus = useAtomValue(socketStatusAtom);
-    const [userCode, setUserCode] = useState(null);
-    console.log('sockectStatus', socketStatus)
-    const [query, setQuery] = useState("");
-    const [filter, setFilter] = useState("all"); // all | online | offline
+    const userCode = useAtomValue(userCodeAtom);
+
+    const [filter, setFilter] = useState("all");
     const [banner, setBanner] = useState(true);
+
     const mapRef = useRef(null);
+    const sheetRef = useRef(null);
+    const snapPoints = useMemo(() => ["28%", "55%"], []);
+    const [sheetData, setSheetData] = useState(null);
 
-    // 내 userCode 로드
-    useEffect(() => {
-        AsyncStorage.getItem("userCode").then(setUserCode).catch(() => setUserCode(null));
-    }, []);
+    // [FIX] 내 위치 선반영: presence[userCode]가 없을 때도 안전
+    const myLocation = useMemo(() => {
+        return userCode ? presence[userCode] : undefined;
+    }, [presence, userCode]);
 
-    // 내 presence
-    const me = useMemo(
-        () => (userCode ? presence[userCode] : undefined),
-        [presence, userCode]
+    // [FIX] 최초 마운트용 초기 좌표: 내 좌표 없으면 시청
+    const initialRegion = useMemo(
+        () => ({
+            latitude: (myLocation?.lat ?? SEOUL_CITY_HALL.lat),
+            longitude: (myLocation?.lng ?? SEOUL_CITY_HALL.lng),
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
+        }),
+        [/* 초기 마운트만 쓰일 값이라 deps 없어도 되지만 안전하게 기본값에만 의존 */]
     );
 
-    // 지도 초기 영역 (내 좌표가 있으면 거기로, 없으면 서울 시청)
-    const initialRegion = useMemo(() => ({
-        latitude: me?.lat ?? 37.5665,
-        longitude: me?.lng ?? 126.9780,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-    }), [me?.lat, me?.lng]);
+    // [FIX] myLocation이 “처음으로 유효해지는 순간” 자동 포커스
+    const didCenterOnceRef = useRef(false);
+    useEffect(() => {
+        if (
+            !didCenterOnceRef.current &&
+            myLocation?.lat != null &&
+            myLocation?.lng != null &&
+            mapRef.current
+        ) {
+            didCenterOnceRef.current = true;
+            mapRef.current.animateToRegion(
+                {
+                    latitude: myLocation.lat,
+                    longitude: myLocation.lng,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                },
+                600
+            );
+        }
+    }, [myLocation?.lat, myLocation?.lng]);
 
-    const centerOnMe = () => {
-        if (me?.lat && me?.lng) {
+    const users = useMemo(() => {
+        const entries = Object.entries(presence);
+        return entries
+            .filter(([code]) => code !== userCode)
+            .map(([code, p]) => ({
+                id: code,
+                lat: p.lat,
+                lng: p.lng,
+                status: checkUserStatus(p.status),
+                distanceKm:
+                    myLocation?.lat != null && myLocation?.lng != null
+                        ? Number(haversine(myLocation.lat, myLocation.lng, p.lat, p.lng).toFixed(2))
+                        : null,
+            }));
+    }, [presence, userCode, myLocation?.lat, myLocation?.lng]);
+
+    const filtered = useMemo(() => {
+        return users.filter((u) => {
+            const okStatus =
+                filter === "all"
+                    ? true
+                    : filter === "online"
+                        ? u.status === "online"
+                        : u.status === "offline";
+            return okStatus;
+        });
+    }, [users, filter]);
+
+    const userInfo = useMutation({
+        mutationFn: async (data) => await instance.get(`/job/${data}`),
+        onSuccess: (res) => setSheetData(res?.data),
+    });
+
+    const handleFocusOnmyLocationOnPress = () => {
+        if (myLocation?.lat && myLocation?.lng) {
             mapRef.current?.animateToRegion(
                 {
-                    latitude: me.lat,
-                    longitude: me.lng,
+                    latitude: myLocation.lat,
+                    longitude: myLocation.lng,
                     latitudeDelta: 0.01,
                     longitudeDelta: 0.01,
                 },
@@ -78,38 +113,15 @@ function index() {
         }
     };
 
-    // presence → 사용자 배열 (내 자신 제외) + 거리 계산
-    const users = useMemo(() => {
-        const entries = Object.entries(presence); // [ [code, {..}], ... ]
-        return entries
-            .filter(([code]) => code !== userCode)
-            .map(([code, p]) => ({
-                id: code,
-                name: code, // 닉네임 없으면 userCode 노출
-                status: simpleStatus(p.status),
-                lat: p.lat,
-                lng: p.lng,
-                distanceKm:
-                    me?.lat && me?.lng
-                        ? Number(haversine(me.lat, me.lng, p.lat, p.lng).toFixed(2))
-                        : null,
-            }));
-    }, [presence, userCode, me?.lat, me?.lng]);
-
-    // 검색 + 상태 필터
-    const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        return users.filter((u) => {
-            const okQuery = !q || u.name.toLowerCase().includes(q);
-            const okStatus =
-                filter === "all"
-                    ? true
-                    : filter === "online"
-                        ? u.status === "online"
-                        : u.status === "offline";
-            return okQuery && okStatus;
-        });
-    }, [users, query, filter]);
+    const handleMarkerOnPress = (data) => {
+        setSheetData(null);
+        try {
+            sheetRef.current?.snapToIndex(1);
+        } catch {
+            sheetRef.current?.expand?.();
+        }
+        if (!userInfo.isPending) userInfo.mutate(data);
+    };
 
     return (
         <>
@@ -125,27 +137,21 @@ function index() {
                         icon={socketStatus === 'connected' ? 'access-point-network' :
                             socketStatus === 'connecting' ? 'lan-pending' : 'wifi-off'}
                         actions={[{ label: "close", onPress: () => setBanner(false) }]}
+                        style={{ borderRadius: 15 }}
                     >
-                        {socketStatus === 'connected' && (me ? "브로커 연결됨 · 내 위치 수신됨" : "브로커 연결됨 · 내 위치 수신 대기")}
-                        {socketStatus === 'connecting' && "브로커 연결 중..."}
-                        {socketStatus === 'disconnected' && "연결 끊김 · 자동 재연결 시도 중"}
+                        {socketStatus === 'connected' && (myLocation ? "Broker connected · My location received" : "Broker connected · Waiting to receive my location")}
+                        {socketStatus === 'connecting' && "Connecting to broker..."}
+                        {socketStatus === 'disconnected' && "Disconnected · Attempting to automatically reconnect"}
                     </Banner>
                 )}
-
-                <Searchbar
-                    placeholder="Search User"
-                    value={query}
-                    onChangeText={setQuery}
-                    style={{ marginTop: 4 }}
-                />
 
                 <SegmentedButtons
                     value={filter}
                     onValueChange={setFilter}
                     buttons={[
-                        { value: "all", label: "전체" },
-                        { value: "online", label: "온라인" },
-                        { value: "offline", label: "오프라인" },
+                        { value: "all", label: "All" },
+                        { value: "online", label: "On-line" },
+                        { value: "offline", label: "Off-line" },
                     ]}
                     style={{ marginTop: 4 }}
                 />
@@ -153,39 +159,37 @@ function index() {
                 {/* 지도 */}
                 <Card style={{ overflow: "hidden" }}>
                     <View style={{ height: 260 }}>
+                        {/* [NOTE] initialRegion은 마운트 시 1회만 사용됨 */}
                         <MapView ref={mapRef} style={{ flex: 1 }} initialRegion={initialRegion}>
                             {/* 내 위치 */}
-                            {me?.lat && me?.lng && (
+                            {myLocation?.lat && myLocation?.lng && (
                                 <Marker
-                                    coordinate={{ latitude: me.lat, longitude: me.lng }}
-                                    title="나"
-                                    description="내 현재 위치"
+                                    coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
                                     pinColor="dodgerblue"
                                 />
                             )}
 
-                            {/* 다른 사용자 (필터 반영) */}
+                            {/* 다른 사용자 */}
                             {filtered.map((u) => (
                                 <Marker
                                     key={u.id}
                                     coordinate={{ latitude: u.lat, longitude: u.lng }}
-                                    title={u.name}
-                                    description={u.distanceKm != null ? `거리 ${u.distanceKm} km` : undefined}
                                     pinColor={u.status === "online" ? "green" : "gray"}
+                                    onPress={() => handleMarkerOnPress(u.id)}
                                 />
                             ))}
                         </MapView>
 
-                        {/* 지도 오버레이 버튼 */}
+                        {/* 오버레이 버튼 */}
                         <View
                             pointerEvents="box-none"
-                            style={{ position: "absolute", top: 10, right: 10, zIndex: 2 }}
+                            style={{ position: "absolute", bottom: 10, right: 10, zIndex: 2 }}
                         >
                             <IconButton
                                 mode="contained"
                                 icon="crosshairs-gps"
                                 size={22}
-                                onPress={centerOnMe}
+                                onPress={handleFocusOnmyLocationOnPress}
                                 containerColor="#dbdbdb"
                                 iconColor="#222"
                                 style={{ elevation: 3 }}
@@ -197,9 +201,8 @@ function index() {
                 {/* 리스트 */}
                 <Card>
                     <Card.Title
-                        title="주변 사용자"
-                        subtitle="상태/검색 필터 적용"
-                        style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 4 }}
+                        title="Users"
+                        style={{ paddingHorizontal: 10, paddingTop: 8, paddingLeft: 20 }}
                     />
                     <Divider style={{ marginHorizontal: 10 }} />
                     <View style={{ paddingHorizontal: 10 }}>
@@ -208,10 +211,10 @@ function index() {
                             .map((u, idx, arr) => (
                                 <View key={u.id}>
                                     <List.Item
-                                        title={u.name}
+                                        title={u.id}
                                         description={
                                             u.distanceKm != null
-                                                ? `거리 ${u.distanceKm} km · ${u.status}`
+                                                ? `Distance ${u.distanceKm} km · ${u.status}`
                                                 : `${u.status}`
                                         }
                                         style={{ paddingHorizontal: 0, paddingVertical: 6 }}
@@ -243,13 +246,69 @@ function index() {
                             ))}
 
                         {filtered.length === 0 && (
-                            <Text style={{ paddingVertical: 16, opacity: 0.6 }}>
-                                일치하는 사용자가 없습니다.
-                            </Text>
+                            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                                <Text style={{ opacity: 0.6, textAlign: 'center' }}>
+                                    There are no matching users.
+                                </Text>
+                            </View>
                         )}
                     </View>
                 </Card>
             </ScrollView>
+
+            {/* BottomSheet: 마커 상세 */}
+            <BottomSheet
+                ref={sheetRef}
+                index={-1}
+                snapPoints={snapPoints}
+                enablePanDownToClose
+                handleIndicatorStyle={{ backgroundColor: "#bbb" }}
+            >
+                <BottomSheetView style={{ padding: 16, gap: 8 }}>
+                    {/* 로딩 */}
+                    {userInfo.isPending && (
+                        <View style={{ paddingVertical: 8 }}>
+                            <ActivityIndicator />
+                        </View>
+                    )}
+
+                    {/* 데이터 표시 */}
+                    {!!sheetData && (
+                        <>
+                            {/* 항상 채워지는 기본 3개 */}
+                            <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                                {sheetData.userName || "No userName"}
+                            </Text>
+                            <Text>Model: {sheetData.modelNumber || "-"}</Text>
+                            <Text>Volume: {sheetData.modelVolume ?? 0}</Text>
+
+                            {/* 진행 중이면 상세 */}
+                            {sheetData.status === 1 ? (
+                                <View style={{ marginTop: 8 }}>
+                                    <Divider />
+                                    <Text style={{ marginTop: 8 }}>Cargo: {sheetData.cargoName || "-"}</Text>
+                                    <Text>
+                                        Product: {sheetData.productName || "-"} x {sheetData.productCount ?? 0}
+                                    </Text>
+                                    <Text>Volume: {sheetData.productVolume ?? 0}</Text>
+                                </View>
+                            ) : (
+                                <Text style={{ marginTop: 8, color: "gray" }}>Not in progress</Text>
+                            )}
+                        </>
+                    )}
+
+                    {/* 오류 */}
+                    {userInfo.isError && !userInfo.isPending && !sheetData && (
+                        <View style={{ minHeight: 150, justifyContent: "center", alignItems: "center"}}>
+                            <Text style={{ color: "tomato", fontSize: 15 }}>
+                                Failed to retrieve information. Please try again.
+                            </Text>
+                        </View>
+
+                    )}
+                </BottomSheetView>
+            </BottomSheet>
         </>
     );
 }
