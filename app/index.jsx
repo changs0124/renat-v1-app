@@ -9,15 +9,15 @@ import { useAtom } from "jotai";
 import { userCodeAtom } from "atom/userAtom";
 
 function index() {
-    const [userCode, setUserCode ] = useAtom(userCodeAtom);
+    const [userCode, setUserCode] = useAtom(userCodeAtom);
 
     const [isChecked, setIsChecked] = useState(false);
 
     useEffect(() => {
-        console.log("[Index] Mounted");
+        console.log("[INDEX] Mounted");
         (async () => {
             const code = await AsyncStorage.getItem("userCode");
-            console.log("[Index] UserCode from Storage =", code);
+            console.log("[INDEX] UserCode from Storage =", code);
             setUserCode(code);
             setIsChecked(true);
         })();
@@ -36,7 +36,7 @@ function index() {
     });
 
     if (!isChecked) {
-        console.log("[Index] Waiting Storage");
+        console.log("[INDEX] Waiting Storage");
         return (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ fontSize: 15 }}>Waiting Storage</Text>
@@ -45,12 +45,14 @@ function index() {
     }
 
     if (!userCode) {
-        console.log("[Index] No UserCode");
+        console.log("[INDEX] No UserCode");
+
         return <Redirect href="/register" />;
     }
 
     if (auth.isLoading) {
-        console.log("[Index] Auth is Loading");
+        console.log("[INDEX] Auth is Loading");
+
         return (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ fontSize: 15 }}>Auth is Loading</Text>
@@ -61,23 +63,19 @@ function index() {
     // 네트워크/서버 오류 시 임시 화면
     if (auth.isError) {
         const status = auth?.error?.response?.status;
-        console.log("[Index] Auth Error Status =", status);
+        console.log("[INDEX] Auth Error Status =", status);
 
         if (status === 404) {
             AsyncStorage.removeItem("userCode").catch(() => { });
 
-            console.log("[Index] Invalid UserCode");
+            console.log("[INDEX] Invalid UserCode");
             return <Redirect href="/register" />;
         }
 
         return (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ paddingBottom: 15, fontSize: 15 }}>Auth error. Check server.</Text>
-                <Button
-                    mode="contained"
-                    onPress={() => { router.push("/register") }}
-                    style={{ fontSize: 15 }}
-                >
+                <Button mode="contained" onPress={() => { router.push("/register") }} style={{ fontSize: 15 }}>
                     Go register
                 </Button>
             </View>
@@ -85,10 +83,12 @@ function index() {
     }
 
     if (auth.isSuccess && auth?.data) {
-        console.log("[Index] Auth is TRUE");
+        console.log("[INDEX] Auth is TRUE");
+
         return <Redirect href="/(tabs)" />
     } else {
-        console.log("[Index] Auth is FALSE");
+        console.log("[INDEX] Auth is FALSE");
+
         return <Redirect href="/register" />;
     }
 }

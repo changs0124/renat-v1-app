@@ -9,6 +9,8 @@ import * as Location from 'expo-location';
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const STORAGE_KEY = "userCode";
+
 function register() {
     const [userName, setUserName] = useState("");
     const [modelId, setModelId] = useState(0);
@@ -20,7 +22,7 @@ function register() {
         queryFn: async () => instance.get("/models").then(res => res.data),
         enabled: true,
         retry: 0,
-        refetchOnWindowFocus: false,
+        refetchOnWindowFocus: true,
     })
 
     useEffect(() => {
@@ -32,13 +34,13 @@ function register() {
     const register = useMutation({
         mutationFn: async ({ userName }) => {
             const { status } = await Location.requestForegroundPermissionsAsync();
+
             if (status !== "granted") throw new Error("Location permission denied.");
 
+            const userCode = uuid.v4().toString();
             const location = await Location.getCurrentPositionAsync({});
             const { latitude, longitude } = location.coords;
-
-            const userCode = uuid.v4().toString();
-
+        
             await instance.post("/user", {
                 userCode,
                 userName,
@@ -46,11 +48,11 @@ function register() {
                 latitude,
                 longitude
             })
-
             return userCode
         },
         onSuccess: async (userCode) => {
-            await AsyncStorage.setItem("userCode", userCode);
+            await AsyncStorage.setItem(STORAGE_KEY, userCode);
+
             Alert.alert("Register Success")
             router.replace("/")
         },
@@ -86,18 +88,26 @@ function register() {
                                     </Button>
                                 }
                             >
-                                {models?.isError && <Menu.Item onPress={() => models.refetch()} title="Load failed (try again)" />}
-                                {models?.isLoading && <ActivityIndicator style={{ margin: 8 }} />}
-                                {models?.data?.map(m => (
-                                    <Menu.Item
-                                        key={m.id}
-                                        onPress={() => {
-                                            setModelId(m.id);
-                                            setVisible(false);
-                                        }}
-                                        title={m.modelNumber}
-                                    />
-                                ))}
+                                {
+                                    models?.isError &&
+                                    <Menu.Item onPress={() => models.refetch()} title="Load failed (try again)" />
+                                }
+                                {
+                                    models?.isLoading &&
+                                    <ActivityIndicator style={{ margin: 8 }} />
+                                }
+                                {
+                                    models?.data?.map(m =>
+                                        <Menu.Item
+                                            key={m.id}
+                                            onPress={() => {
+                                                setModelId(m.id);
+                                                setVisible(false);
+                                            }}
+                                            title={m.modelNumber}
+                                        />
+                                    )
+                                }
                             </Menu>
                         </Card.Content>
                         <Card.Actions>

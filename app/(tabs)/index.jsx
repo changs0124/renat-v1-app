@@ -4,11 +4,12 @@ import { useMutation } from "@tanstack/react-query";
 import { instance } from "apis/instance";
 import { presenceAtom, socketStatusAtom } from "atom/presenceAtom";
 import { userCodeAtom } from "atom/userAtom";
+import TabHeader from "components/TabHeader/TabHeader";
 import { useAtomValue } from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, ScrollView } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { Appbar, Searchbar, SegmentedButtons, Card, Text, List, Avatar, Divider, Badge, Banner, IconButton, ActivityIndicator } from "react-native-paper";
+import { SegmentedButtons, Card, Text, List, Avatar, Divider, Badge, Banner, IconButton, ActivityIndicator } from "react-native-paper";
 import { haversine } from "utils/geoUtils";
 import { checkUserStatus } from "utils/statusUtils";
 
@@ -44,16 +45,15 @@ function index() {
         [/* 초기 마운트만 쓰일 값이라 deps 없어도 되지만 안전하게 기본값에만 의존 */]
     );
 
-    // [FIX] myLocation이 “처음으로 유효해지는 순간” 자동 포커스
-    const didCenterOnceRef = useRef(false);
+    const focusMeRef = useRef(false);
     useEffect(() => {
         if (
-            !didCenterOnceRef.current &&
+            !focusMeRef.current &&
             myLocation?.lat != null &&
             myLocation?.lng != null &&
             mapRef.current
         ) {
-            didCenterOnceRef.current = true;
+            focusMeRef.current = true;
             mapRef.current.animateToRegion(
                 {
                     latitude: myLocation.lat,
@@ -125,70 +125,65 @@ function index() {
 
     return (
         <>
-            <Appbar.Header>
-                <Appbar.Content title="Home" />
-                <Appbar.Action icon="bell-outline" onPress={() => { }} />
-            </Appbar.Header>
-
+            <TabHeader title={"Home"} icon={"bell-outline"}/>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-                {banner && (
+                {
+                    banner &&
                     <Banner
                         visible
                         icon={socketStatus === 'connected' ? 'access-point-network' :
                             socketStatus === 'connecting' ? 'lan-pending' : 'wifi-off'}
                         actions={[{ label: "close", onPress: () => setBanner(false) }]}
-                        style={{ borderRadius: 15 }}
+                        style={{ borderRadius: 16 }}
                     >
                         {socketStatus === 'connected' && (myLocation ? "Broker connected · My location received" : "Broker connected · Waiting to receive my location")}
                         {socketStatus === 'connecting' && "Connecting to broker..."}
                         {socketStatus === 'disconnected' && "Disconnected · Attempting to automatically reconnect"}
                     </Banner>
-                )}
-
+                }
                 <SegmentedButtons
                     value={filter}
                     onValueChange={setFilter}
                     buttons={[
-                        { value: "all", label: "All" },
-                        { value: "online", label: "On-line" },
-                        { value: "offline", label: "Off-line" },
+                        { value: "all", label: "All", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
+                        { value: "online", label: "On-line", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
+                        { value: "offline", label: "Off-line", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
                     ]}
-                    style={{ marginTop: 4 }}
+                    style={{ opacity: 0.8 }}
                 />
-
-                {/* 지도 */}
-                <Card style={{ overflow: "hidden" }}>
-                    <View style={{ height: 260 }}>
-                        {/* [NOTE] initialRegion은 마운트 시 1회만 사용됨 */}
-                        <MapView ref={mapRef} style={{ flex: 1 }} initialRegion={initialRegion}>
-                            {/* 내 위치 */}
-                            {myLocation?.lat && myLocation?.lng && (
+                <Card style={{ overflow: "hidden", borderRadius: 16 }}>
+                    <View style={{ minHeight: 250 }}>
+                        <MapView
+                            ref={mapRef}
+                            style={{ flex: 1 }}
+                            initialRegion={initialRegion}
+                        >
+                            {
+                                myLocation?.lat && myLocation?.lng &&
                                 <Marker
                                     coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
                                     pinColor="dodgerblue"
                                 />
-                            )}
-
-                            {/* 다른 사용자 */}
-                            {filtered.map((u) => (
-                                <Marker
-                                    key={u.id}
-                                    coordinate={{ latitude: u.lat, longitude: u.lng }}
-                                    pinColor={u.status === "online" ? "green" : "gray"}
-                                    onPress={() => handleMarkerOnPress(u.id)}
-                                />
-                            ))}
+                            }
+                            {
+                                filtered.map((u) => (
+                                    <Marker
+                                        key={u.id}
+                                        coordinate={{ latitude: u.lat, longitude: u.lng }}
+                                        pinColor={u.status === "online" ? "green" : "gray"}
+                                        onPress={() => handleMarkerOnPress(u.id)}
+                                    />
+                                ))
+                            }
                         </MapView>
-
-                        {/* 오버레이 버튼 */}
                         <View
                             pointerEvents="box-none"
-                            style={{ position: "absolute", bottom: 10, right: 10, zIndex: 2 }}
+                            style={{ position: "absolute", bottom: 5, right: 5, zIndex: 2 }}
                         >
                             <IconButton
                                 mode="contained"
                                 icon="crosshairs-gps"
-                                size={22}
+                                size={23}
                                 onPress={handleFocusOnmyLocationOnPress}
                                 containerColor="#dbdbdb"
                                 iconColor="#222"
@@ -197,116 +192,116 @@ function index() {
                         </View>
                     </View>
                 </Card>
-
-                {/* 리스트 */}
-                <Card>
+                <Card style={{borderRadius: 16}}>
                     <Card.Title
-                        title="Users"
+                        title="User-List"
                         style={{ paddingHorizontal: 10, paddingTop: 8, paddingLeft: 20 }}
+                        titleStyle={{ opacity: 0.8, fontSize: 18, fontWeight: "600" }}
                     />
                     <Divider style={{ marginHorizontal: 10 }} />
                     <View style={{ paddingHorizontal: 10 }}>
-                        {filtered
-                            .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
-                            .map((u, idx, arr) => (
-                                <View key={u.id}>
-                                    <List.Item
-                                        title={u.id}
-                                        description={
-                                            u.distanceKm != null
-                                                ? `Distance ${u.distanceKm} km · ${u.status}`
-                                                : `${u.status}`
+                        {
+                            filtered
+                                .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
+                                .map((u, idx, arr) => (
+                                    <View key={u.id}>
+                                        <List.Item
+                                            title={u.id}
+                                            description={
+                                                u.distanceKm != null
+                                                    ? `Distance ${u.distanceKm} km · ${u.status}`
+                                                    : `${u.status}`
+                                            }
+                                            style={{ paddingHorizontal: 0, paddingVertical: 6 }}
+                                            left={(props) => (
+                                                <Avatar.Icon
+                                                    {...props}
+                                                    icon={u.status === "online" ? "account-check" : "account-off"}
+                                                    color="white"
+                                                    style={{
+                                                        backgroundColor:
+                                                            u.status === "online" ? "#10b981" : "#9ca3af",
+                                                    }}
+                                                />
+                                            )}
+                                            onPress={() => {
+                                                mapRef.current?.animateToRegion(
+                                                    {
+                                                        latitude: u.lat,
+                                                        longitude: u.lng,
+                                                        latitudeDelta: 0.01,
+                                                        longitudeDelta: 0.01,
+                                                    },
+                                                    500
+                                                );
+                                            }}
+                                            titleStyle={{ opacity: 0.8, fontSize: 16, fontWeight: "600" }}
+                                            descriptionStyle={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}
+                                        />
+                                        {
+                                            idx < arr.length - 1 &&
+                                            <Divider />
                                         }
-                                        style={{ paddingHorizontal: 0, paddingVertical: 6 }}
-                                        left={(props) => (
-                                            <Avatar.Icon
-                                                {...props}
-                                                icon={u.status === "online" ? "account-check" : "account-off"}
-                                                color="white"
-                                                style={{
-                                                    backgroundColor:
-                                                        u.status === "online" ? "#10b981" : "#9ca3af",
-                                                }}
-                                            />
-                                        )}
-                                        onPress={() => {
-                                            mapRef.current?.animateToRegion(
-                                                {
-                                                    latitude: u.lat,
-                                                    longitude: u.lng,
-                                                    latitudeDelta: 0.01,
-                                                    longitudeDelta: 0.01,
-                                                },
-                                                500
-                                            );
-                                        }}
-                                    />
-                                    {idx < arr.length - 1 && <Divider />}
-                                </View>
-                            ))}
-
-                        {filtered.length === 0 && (
-                            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                                <Text style={{ opacity: 0.6, textAlign: 'center' }}>
+                                    </View>
+                                ))
+                        }
+                        {
+                            filtered.length === 0 &&
+                            <View style={{ boxSizing: "border-box", minHeight: 150, justifyContent: "center", alignItems: "center" }}>
+                                <Text style={{ opacity: 0.6, fontSize: 16, fontWeight: 600 }}>
                                     There are no matching users.
                                 </Text>
                             </View>
-                        )}
+                        }
                     </View>
                 </Card>
             </ScrollView>
-
-            {/* BottomSheet: 마커 상세 */}
             <BottomSheet
                 ref={sheetRef}
                 index={-1}
                 snapPoints={snapPoints}
                 enablePanDownToClose
-                handleIndicatorStyle={{ backgroundColor: "#bbb" }}
+                handleIndicatorStyle={{ backgroundColor: "#bbbbbb" }}
             >
                 <BottomSheetView style={{ padding: 16, gap: 8 }}>
-                    {/* 로딩 */}
-                    {userInfo.isPending && (
+                    {
+                        userInfo.isPending &&
                         <View style={{ paddingVertical: 8 }}>
                             <ActivityIndicator />
                         </View>
-                    )}
-
-                    {/* 데이터 표시 */}
-                    {!!sheetData && (
+                    }
+                    {
+                        !!sheetData &&
                         <>
-                            {/* 항상 채워지는 기본 3개 */}
-                            <Text style={{ fontWeight: "700", fontSize: 16 }}>
+                            <Text style={{ opacity: 0.8, fontSize: 16, fontWeight: "600" }}>
                                 {sheetData.userName || "No userName"}
                             </Text>
-                            <Text>Model: {sheetData.modelNumber || "-"}</Text>
-                            <Text>Volume: {sheetData.modelVolume ?? 0}</Text>
-
-                            {/* 진행 중이면 상세 */}
-                            {sheetData.status === 1 ? (
-                                <View style={{ marginTop: 8 }}>
-                                    <Divider />
-                                    <Text style={{ marginTop: 8 }}>Cargo: {sheetData.cargoName || "-"}</Text>
-                                    <Text>
-                                        Product: {sheetData.productName || "-"} x {sheetData.productCount ?? 0}
-                                    </Text>
-                                    <Text>Volume: {sheetData.productVolume ?? 0}</Text>
-                                </View>
-                            ) : (
-                                <Text style={{ marginTop: 8, color: "gray" }}>Not in progress</Text>
-                            )}
+                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Model: {sheetData.modelNumber || "-"}</Text>
+                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Volume: {sheetData.modelVolume ?? 0}</Text>
+                            <Divider />
+                            {
+                                sheetData.status === 1
+                                    ?
+                                    <View style={{ marginTop: 8 }}>
+                                        <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Cargo: {sheetData.cargoName || "-"}</Text>
+                                        <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                            Product: {sheetData.productName || "-"} x {sheetData.productCount ?? 0}
+                                        </Text>
+                                        <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Volume: {sheetData.productVolume ?? 0}</Text>
+                                    </View>
+                                    :
+                                    <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Not in progress</Text>
+                            }
                         </>
-                    )}
-
-                    {/* 오류 */}
-                    {userInfo.isError && !userInfo.isPending && !sheetData && (
-                        <View style={{ minHeight: 150, justifyContent: "center", alignItems: "center"}}>
-                            <Text style={{ color: "tomato", fontSize: 15 }}>
+                    }
+                    {
+                        userInfo.isError && !userInfo.isPending && !sheetData &&
+                        <View style={{ minHeight: 150, justifyContent: "center", alignItems: "center" }}>
+                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
                                 Failed to retrieve information. Please try again.
                             </Text>
                         </View>
-
-                    )}
+                    }
                 </BottomSheetView>
             </BottomSheet>
         </>
