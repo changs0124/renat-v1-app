@@ -8,7 +8,7 @@ export const registerStyles = StyleSheet.create({
         backgroundColor: "#dbdbdb"
     },
     card: {
-        borderRadius: 15,
+        borderRadius: 16,
         elevation: 3,
         backgroundColor: "#ffffff"
     
