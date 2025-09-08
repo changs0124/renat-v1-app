@@ -9,18 +9,28 @@ import { useAtomValue } from "jotai";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, ScrollView } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { SegmentedButtons, Card, Text, List, Avatar, Divider, Badge, Banner, IconButton, ActivityIndicator } from "react-native-paper";
+import { SegmentedButtons, Card, Text, List, Avatar, Divider, Banner, IconButton, ActivityIndicator } from "react-native-paper";
 import { haversine } from "utils/geoUtils";
-import { checkUserStatus } from "utils/statusUtils";
+// [REMOVED] status 유틸 제거
+// import { checkUserStatus } from "utils/statusUtils";
 
 // [FIX] 시청 좌표(기본값)
 const SEOUL_CITY_HALL = { lat: 37.5665, lng: 126.9780 };
+
+// 색상/아이콘 매핑 (working 기준)
+// stable(working=false): 초록, check 아이콘
+// working(true): 파랑, progress 아이콘
+const UI_BY_WORKING = {
+    stable: { color: "#10b981", icon: "check-circle" },
+    working: { color: "#3b82f6", icon: "progress-clock" },
+};
 
 function index() {
     const presence = useAtomValue(presenceAtom) || {}; // [FIX] undefined 안전
     const socketStatus = useAtomValue(socketStatusAtom);
     const userCode = useAtomValue(userCodeAtom);
 
+    // [CHANGED] 필터: all / stable / working
     const [filter, setFilter] = useState("all");
     const [banner, setBanner] = useState(true);
 
@@ -37,12 +47,12 @@ function index() {
     // [FIX] 최초 마운트용 초기 좌표: 내 좌표 없으면 시청
     const initialRegion = useMemo(
         () => ({
-            latitude: (myLocation?.lat ?? SEOUL_CITY_HALL.lat),
-            longitude: (myLocation?.lng ?? SEOUL_CITY_HALL.lng),
+            latitude: myLocation?.lat ?? SEOUL_CITY_HALL.lat,
+            longitude: myLocation?.lng ?? SEOUL_CITY_HALL.lng,
             latitudeDelta: 0.02,
             longitudeDelta: 0.02,
         }),
-        [/* 초기 마운트만 쓰일 값이라 deps 없어도 되지만 안전하게 기본값에만 의존 */]
+        [] // 초기 렌더에만 사용
     );
 
     const focusMeRef = useRef(false);
@@ -66,31 +76,35 @@ function index() {
         }
     }, [myLocation?.lat, myLocation?.lng]);
 
+    // [CHANGED] users: status 대신 working으로 수집
     const users = useMemo(() => {
         const entries = Object.entries(presence);
         return entries
             .filter(([code]) => code !== userCode)
-            .map(([code, p]) => ({
-                id: code,
-                lat: p.lat,
-                lng: p.lng,
-                status: checkUserStatus(p.status),
-                distanceKm:
+            .map(([code, p]) => {
+                const distanceKm =
                     myLocation?.lat != null && myLocation?.lng != null
                         ? Number(haversine(myLocation.lat, myLocation.lng, p.lat, p.lng).toFixed(2))
-                        : null,
-            }));
+                        : null;
+
+                return {
+                    id: code,
+                    userName: p.userName,
+                    lat: p.lat,
+                    lng: p.lng,
+                    working: !!p.working, // 핵심 불린
+                    distanceKm,
+                };
+            });
     }, [presence, userCode, myLocation?.lat, myLocation?.lng]);
 
+    // [CHANGED] 필터링: all / stable(working=false) / working(true)
     const filtered = useMemo(() => {
         return users.filter((u) => {
-            const okStatus =
-                filter === "all"
-                    ? true
-                    : filter === "online"
-                        ? u.status === "online"
-                        : u.status === "offline";
-            return okStatus;
+            if (filter === "all") return true;
+            if (filter === "stable") return !u.working;
+            if (filter === "working") return u.working;
+            return true;
         });
     }, [users, filter]);
 
@@ -125,57 +139,65 @@ function index() {
 
     return (
         <>
-            <TabHeader title={"Home"} icon={"bell-outline"}/>
+            <TabHeader title={"Home"} icon={"bell-outline"} />
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-                {
-                    banner &&
+                {banner && (
                     <Banner
                         visible
-                        icon={socketStatus === 'connected' ? 'access-point-network' :
-                            socketStatus === 'connecting' ? 'lan-pending' : 'wifi-off'}
+                        icon={
+                            socketStatus === "connected"
+                                ? "access-point-network"
+                                : socketStatus === "connecting"
+                                    ? "lan-pending"
+                                    : "wifi-off"
+                        }
                         actions={[{ label: "close", onPress: () => setBanner(false) }]}
                         style={{ borderRadius: 16 }}
                     >
-                        {socketStatus === 'connected' && (myLocation ? "Broker connected · My location received" : "Broker connected · Waiting to receive my location")}
-                        {socketStatus === 'connecting' && "Connecting to broker..."}
-                        {socketStatus === 'disconnected' && "Disconnected · Attempting to automatically reconnect"}
+                        {socketStatus === "connected" &&
+                            (myLocation
+                                ? "Broker connected · My location received"
+                                : "Broker connected · Waiting to receive my location")}
+                        {socketStatus === "connecting" && "Connecting to broker..."}
+                        {socketStatus === "disconnected" &&
+                            "Disconnected · Attempting to automatically reconnect"}
                     </Banner>
-                }
+                )}
+
+                {/* [CHANGED] 필터 버튼: all / stable / working */}
                 <SegmentedButtons
                     value={filter}
                     onValueChange={setFilter}
                     buttons={[
                         { value: "all", label: "All", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
-                        { value: "online", label: "On-line", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
-                        { value: "offline", label: "Off-line", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
+                        { value: "stable", label: "Stable", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
+                        { value: "working", label: "Working", labelStyle: { opacity: 0.8, fontSize: 16, fontWeight: "600" } },
                     ]}
                     style={{ opacity: 0.8 }}
                 />
+
                 <Card style={{ overflow: "hidden", borderRadius: 16 }}>
                     <View style={{ minHeight: 250 }}>
-                        <MapView
-                            ref={mapRef}
-                            style={{ flex: 1 }}
-                            initialRegion={initialRegion}
-                        >
-                            {
-                                myLocation?.lat && myLocation?.lng &&
+                        <MapView ref={mapRef} style={{ flex: 1 }} initialRegion={initialRegion}>
+                            {/* 내 위치: 파란 핀 유지 */}
+                            {myLocation?.lat && myLocation?.lng && (
                                 <Marker
                                     coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
-                                    pinColor="dodgerblue"
+                                    pinColor="purple"
                                 />
-                            }
-                            {
-                                filtered.map((u) => (
-                                    <Marker
-                                        key={u.id}
-                                        coordinate={{ latitude: u.lat, longitude: u.lng }}
-                                        pinColor={u.status === "online" ? "green" : "gray"}
-                                        onPress={() => handleMarkerOnPress(u.id)}
-                                    />
-                                ))
-                            }
+                            )}
+
+                            {/* 상대 사용자: working(파랑) / stable(초록) */}
+                            {filtered.map((u) => (
+                                <Marker
+                                    key={u.id}
+                                    coordinate={{ latitude: u.lat, longitude: u.lng }}
+                                    pinColor={u.working ? UI_BY_WORKING.working.color : UI_BY_WORKING.stable.color}
+                                    onPress={() => handleMarkerOnPress(u.id)}
+                                />
+                            ))}
                         </MapView>
+
                         <View
                             pointerEvents="box-none"
                             style={{ position: "absolute", bottom: 5, right: 5, zIndex: 2 }}
@@ -192,7 +214,8 @@ function index() {
                         </View>
                     </View>
                 </Card>
-                <Card style={{borderRadius: 16}}>
+
+                <Card style={{ borderRadius: 16 }}>
                     <Card.Title
                         title="User-List"
                         style={{ paddingHorizontal: 10, paddingTop: 8, paddingLeft: 20 }}
@@ -200,28 +223,27 @@ function index() {
                     />
                     <Divider style={{ marginHorizontal: 10 }} />
                     <View style={{ paddingHorizontal: 10 }}>
-                        {
-                            filtered
-                                .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
-                                .map((u, idx, arr) => (
+                        {filtered
+                            .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
+                            .map((u, idx, arr) => {
+                                const ui = u.working ? UI_BY_WORKING.working : UI_BY_WORKING.stable;
+                                return (
                                     <View key={u.id}>
                                         <List.Item
-                                            title={u.id}
+                                            title={u.userName}
                                             description={
                                                 u.distanceKm != null
-                                                    ? `Distance ${u.distanceKm} km · ${u.status}`
-                                                    : `${u.status}`
+                                                    ? `Distance ${u.distanceKm} km · ${u.working ? "working" : "stable"}`
+                                                    : `${u.working ? "working" : "stable"}`
                                             }
-                                            style={{ paddingHorizontal: 0, paddingVertical: 6 }}
+                                            style={{ paddingLeft: 6, paddingVertical: 6 }}
                                             left={(props) => (
                                                 <Avatar.Icon
                                                     {...props}
-                                                    icon={u.status === "online" ? "account-check" : "account-off"}
+                                                    icon={ui.icon}
                                                     color="white"
-                                                    style={{
-                                                        backgroundColor:
-                                                            u.status === "online" ? "#10b981" : "#9ca3af",
-                                                    }}
+                                                    size={50}
+                                                    style={{ backgroundColor: ui.color }}
                                                 />
                                             )}
                                             onPress={() => {
@@ -238,24 +260,28 @@ function index() {
                                             titleStyle={{ opacity: 0.8, fontSize: 16, fontWeight: "600" }}
                                             descriptionStyle={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}
                                         />
-                                        {
-                                            idx < arr.length - 1 &&
-                                            <Divider />
-                                        }
+                                        {idx < arr.length - 1 && <Divider />}
                                     </View>
-                                ))
-                        }
-                        {
-                            filtered.length === 0 &&
-                            <View style={{ boxSizing: "border-box", minHeight: 150, justifyContent: "center", alignItems: "center" }}>
+                                );
+                            })}
+                        {filtered.length === 0 && (
+                            <View
+                                style={{
+                                    boxSizing: "border-box",
+                                    minHeight: 150,
+                                    justifyContent: "center",
+                                    alignItems: "center",
+                                }}
+                            >
                                 <Text style={{ opacity: 0.6, fontSize: 16, fontWeight: 600 }}>
                                     There are no matching users.
                                 </Text>
                             </View>
-                        }
+                        )}
                     </View>
                 </Card>
             </ScrollView>
+
             <BottomSheet
                 ref={sheetRef}
                 index={-1}
@@ -264,44 +290,52 @@ function index() {
                 handleIndicatorStyle={{ backgroundColor: "#bbbbbb" }}
             >
                 <BottomSheetView style={{ padding: 16, gap: 8 }}>
-                    {
-                        userInfo.isPending &&
+                    {userInfo.isPending && (
                         <View style={{ paddingVertical: 8 }}>
                             <ActivityIndicator />
                         </View>
-                    }
-                    {
-                        !!sheetData &&
+                    )}
+
+                    {!!sheetData && (
                         <>
                             <Text style={{ opacity: 0.8, fontSize: 16, fontWeight: "600" }}>
                                 {sheetData.userName || "No userName"}
                             </Text>
-                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Model: {sheetData.modelNumber || "-"}</Text>
-                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Volume: {sheetData.modelVolume ?? 0}</Text>
+                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                Model: {sheetData.modelNumber || "-"}
+                            </Text>
+                            <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                Volume: {sheetData.modelVolume ?? 0}
+                            </Text>
                             <Divider />
-                            {
-                                sheetData.status === 1
-                                    ?
-                                    <View style={{ marginTop: 8 }}>
-                                        <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Cargo: {sheetData.cargoName || "-"}</Text>
-                                        <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
-                                            Product: {sheetData.productName || "-"} x {sheetData.productCount ?? 0}
-                                        </Text>
-                                        <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Volume: {sheetData.productVolume ?? 0}</Text>
-                                    </View>
-                                    :
-                                    <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>Not in progress</Text>
-                            }
+                            {/* 아래 status는 "작업 정보"의 상태로 보이므로 기존 유지 (필요시 working으로도 변경 가능) */}
+                            {sheetData.status === 1 ? (
+                                <View style={{ marginTop: 8 }}>
+                                    <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                        Cargo: {sheetData.cargoName || "-"}
+                                    </Text>
+                                    <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                        Product: {sheetData.productName || "-"} x {sheetData.productCount ?? 0}
+                                    </Text>
+                                    <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                        Volume: {sheetData.productVolume ?? 0}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <Text style={{ marginTop: 8, opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
+                                    Not in progress
+                                </Text>
+                            )}
                         </>
-                    }
-                    {
-                        userInfo.isError && !userInfo.isPending && !sheetData &&
+                    )}
+
+                    {userInfo.isError && !userInfo.isPending && !sheetData && (
                         <View style={{ minHeight: 150, justifyContent: "center", alignItems: "center" }}>
                             <Text style={{ opacity: 0.6, fontSize: 14, fontWeight: "400" }}>
                                 Failed to retrieve information. Please try again.
                             </Text>
                         </View>
-                    }
+                    )}
                 </BottomSheetView>
             </BottomSheet>
         </>

@@ -8,7 +8,7 @@ import { Button } from "react-native-paper";
 import { useAtom } from "jotai";
 import { userCodeAtom } from "atom/userAtom";
 
-function index() {
+function Index() {
     const [userCode, setUserCode] = useAtom(userCodeAtom);
 
     const [isChecked, setIsChecked] = useState(false);
@@ -60,7 +60,6 @@ function index() {
         );
     }
 
-    // 네트워크/서버 오류 시 임시 화면
     if (auth.isError) {
         const status = auth?.error?.response?.status;
         console.log("[INDEX] Auth Error Status =", status);
@@ -93,4 +92,4 @@ function index() {
     }
 }
 
-export default index;
+export default Index;
